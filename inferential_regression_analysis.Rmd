@@ -1,0 +1,980 @@
+---
+title: "Inferencia estadística y modelos de regresión en R"
+author: "Witman Zavala M."
+date: "2025-06-29"
+output: html_document
+---
+
+## 1. Los datos Estudiantes.xlsx fueron recogidos aplicando una encuesta a una muestra de estudiantes
+
+universitarios, y corresponde a un dataframe con 400 observaciones y 18 variables, las cuales se describen en el mismo archivo.
+
+a)  Realize un an´alisis de correlaci´on m´ultiple entre las variables cuantitativas y describa los resultados.
+
+b)  Para la variable Ingreso (en millones de pesos), y suponiendo que esta variable tiene una distribuci´on normal, realice tests de diferencias de medias (con un 95% de nivel de confianza) para esta variable clasificada seg´un Estrato y describa los resultados.
+
+c)  Para la variable Colegio, realice el test de proporci´on considerando las clases Privado y Publico.
+
+## Carga del dataset Estudiantes
+
+```{r}
+# Cargar la librería necesaria para leer archivos Excel
+library(readxl)
+
+# Definir la URL directa (raw) del archivo Excel en GitHub
+excel_url <-"https://github.com/witman92/r-inferential-analytics/raw/main/Estudiantes.xlsx"
+
+# Crear un archivo temporal para almacenar el archivo descargado
+temp_file <- tempfile(fileext = ".xlsx")
+
+# Descargar el archivo Excel desde GitHub al archivo temporal
+download.file(url = excel_url, destfile = temp_file, mode = "wb")
+
+# Leer el archivo Excel directamente desde el archivo temporal
+df <- read_excel(temp_file)
+
+# Mostrar las primeras filas del dataset para verificar la carga correcta
+print(head(df))
+
+# Eliminar el archivo temporal para liberar espacio
+unlink(temp_file)
+
+```
+
+### a) Realize un analisis de correlacion multiple entre las variables cuantitativas y describa los resultados.
+
+```{r}
+# -----------------------------------------------
+# Análisis de Correlación Múltiple (Optimizado)
+# -----------------------------------------------
+
+# Paso 0: Cargar paquetes necesarios
+required_packages <- c("corrplot", "GGally", "ggplot2", "dplyr")
+to_install <- setdiff(required_packages, rownames(installed.packages()))
+if(length(to_install)) install.packages(to_install)
+invisible(lapply(required_packages, library, character.only = TRUE))
+
+# Paso 1: Preparación de los datos
+cuantitativas <- df %>%
+  dplyr::select(Edad, Estrato, Puntaje) %>%
+  mutate(across(everything(), ~as.numeric(as.character(.))))
+
+# Diagnóstico de datos faltantes
+cat("\n📌 Datos faltantes por variable:\n")
+print(colSums(is.na(cuantitativas)))
+
+# Paso 2: Calcular matriz de correlación
+cor_mat <- cor(cuantitativas, use = "pairwise.complete.obs", method = "pearson")
+cat("\n📈 Matriz de Correlación:\n")
+print(round(cor_mat, 2))
+
+# Paso 3: Gráfico de matriz de correlación
+cat("\n🎨 Gráfico 1: Matriz de Correlación\n")
+corrplot(cor_mat, method = "color", type = "upper",
+         col = colorRampPalette(c("red", "white", "blue"))(200),
+         addCoef.col = "black", tl.col = "black", number.cex = 0.7,
+         title = "Matriz de Correlación", mar = c(0,0,2,0))
+
+# Interpretación del gráfico 1
+cat("\n🧠 Interpretación del Gráfico 1:\n")
+cat("- Círculos más grandes indican mayor correlación (positiva en azul, negativa en rojo).\n")
+cat("- Los valores numéricos muestran el coeficiente de correlación de Pearson.\n")
+cat("- Útil para identificar rápidamente relaciones lineales fuertes o débiles.\n")
+
+# Paso 4: Gráfico de dispersión por pares (base R)
+cat("\n📊 Gráfico 2: Pares de Dispersión (Base R)\n")
+pairs(cuantitativas, main = "Matriz de Dispersión - Base R", pch = 21, bg = "lightblue", upper.panel = NULL)
+
+# Interpretación del gráfico 2
+cat("\n🧠 Interpretación del Gráfico 2:\n")
+cat("- Cada panel muestra la relación entre un par de variables.\n")
+cat("- Las nubes de puntos ayudan a ver relaciones lineales o no lineales.\n")
+cat("- Posibles outliers o agrupamientos también se detectan fácilmente.\n")
+
+# Paso 5: Visualización avanzada con GGally
+cat("\n📊 Gráfico 3: Análisis Visual con GGally::ggpairs\n")
+ggpairs(cuantitativas,
+        lower = list(continuous = wrap("points", alpha = 0.5, size = 1.5, color = "steelblue")),
+        upper = list(continuous = wrap("cor", size = 4)),
+        diag = list(continuous = wrap("densityDiag", alpha = 0.6, fill = "lightblue")),
+        title = "Análisis Exploratorio - GGally")
+
+# Interpretación del gráfico 3
+cat("\n🧠 Interpretación del Gráfico 3:\n")
+cat("- Diagonal: distribución de cada variable con densidad.\n")
+cat("- Inferior: gráficos de dispersión entre pares.\n")
+cat("- Superior: coeficiente de correlación con claridad visual.\n")
+cat("- Ideal para detectar relaciones, simetrías y valores atípicos.\n")
+
+```
+
+### b) Para la variable Ingreso (en millones de pesos), y suponiendo que esta variable tiene una distribuci´on normal, realice tests de diferencias de medias (con un 95% de nivel de confianza) para esta variable clasificada seg´un Estrato y describa los resultados.
+
+```{r}
+# Asegurarse de que Estrato sea un factor
+df$Estrato <- as.factor(df$Estrato)
+
+# Verificar la clase de la columna Ingreso
+str(df$Ingreso)
+
+# Asegurarse de que la columna Ingreso sea numérica
+df$Ingreso <- as.numeric(df$Ingreso)
+
+# Verificar si hay NA o valores no numéricos
+summary(df$Ingreso)
+
+# Eliminar filas con valores NA en la columna Ingreso
+df <- df[!is.na(df$Ingreso), ]
+
+# Ahora realizar ANOVA (Análisis de Varianza)
+anova_result <- aov(Ingreso ~ Estrato, data = df)
+
+# Mostrar el resumen del resultado del ANOVA
+print(summary(anova_result))
+
+# Realizar el Post-Hoc Test de Tukey
+tukey_result <- TukeyHSD(anova_result, conf.level = 0.95)
+
+# Mostrar los resultados del post-hoc test
+print(tukey_result)
+
+# -----------------------------------------------
+# Interpretación de los Resultados
+# -----------------------------------------------
+cat("\n🧠 Interpretación de los Resultados del Test de Diferencia de Medias (ANOVA y Tukey):\n")
+
+# Interpretación del ANOVA
+cat("\n--- Resultados del ANOVA ---\n")
+anova_summary <- summary(anova_result)[[1]]
+p_value_anova <- anova_summary$"Pr(>F)"[1]
+
+cat(sprintf("- El p-valor del ANOVA es: %.4f\n", p_value_anova))
+
+if (p_value_anova < 0.05) {
+  cat(sprintf("- Dado que el p-valor (%.4f) es menor que el nivel de significancia (0.05),\n  rechazamos la hipótesis nula.\n", p_value_anova))
+  cat("- Esto sugiere que existe al menos un par de grupos de Estrato con medias de Ingreso significativamente diferentes.\n")
+} else {
+  cat(sprintf("- Dado que el p-valor (%.4f) es mayor o igual que el nivel de significancia (0.05),\n  no tenemos suficiente evidencia para rechazar la hipótesis nula.\n", p_value_anova))
+  cat("- Esto sugiere que no hay diferencias significativas en el Ingreso promedio entre los distintos grupos de Estrato.\n")
+}
+
+# Interpretación del Post-Hoc Test de Tukey
+cat("\n--- Resultados del Post-Hoc Test de Tukey (Diferencias entre pares de grupos) ---\n")
+cat("- Las filas en el resultado de Tukey muestran las diferencias entre las medias de cada par de grupos de Estrato.\n")
+cat("- 'diff': La diferencia en las medias entre los dos grupos.\n")
+cat("- 'lwr' y 'upr': El intervalo de confianza del 95% para la diferencia de medias.\n")
+cat("- 'p adj': El p-valor ajustado para la comparación específica.\n")
+
+cat("\nInterpretación detallada de los pares de grupos:\n")
+tukey_df <- as.data.frame(tukey_result$Estrato)
+print(tukey_df)
+
+# Identificar pares con diferencias significativas al 95% de confianza
+signif_pairs <- rownames(tukey_df)[tukey_df$`p adj` < 0.05]
+
+if (length(signif_pairs) > 0) {
+  cat("\nPares de grupos de Estrato con diferencias significativas en el Ingreso (p < 0.05):\n")
+  for (pair in signif_pairs) {
+    cat(sprintf("- %s\n", pair))
+    diff_val <- tukey_df[pair, "diff"]
+    lwr_val <- tukey_df[pair, "lwr"]
+    upr_val <- tukey_df[pair, "upr"]
+    cat(sprintf("  - Diferencia media: %.4f (IC 95%%: [%.4f, %.4f])\n", diff_val, lwr_val, upr_val))
+  }
+  cat("\nEstos pares de grupos tienen medias de Ingreso significativamente diferentes según la prueba de Tukey (con un 95% de confianza).\n")
+} else {
+  cat("\nNo se encontraron pares de grupos de Estrato con diferencias significativas en el Ingreso según la prueba de Tukey (con un 95% de confianza).\n")
+  cat("Esto es consistente con un resultado de ANOVA no significativo, si fue el caso.\n")
+}
+
+cat("\nConclusión General:\n")
+if (p_value_anova < 0.05) {
+  cat("El análisis ANOVA global indica que hay diferencias significativas en el Ingreso promedio entre los distintos niveles de Estrato. El post-hoc test de\n")
+  cat("Tukey identifica cuáles pares específicos de estratos presentan estas diferencias significativas en sus medias de Ingreso, al 95% de nivel de confianza.\n")
+} else {
+  cat("El análisis ANOVA global no detectó diferencias significativas en el Ingreso promedio entre los distintos niveles de Estrato\n")
+  cat("al 95% de nivel de confianza. Por lo tanto, no se identifican pares de estratos con diferencias significativas en sus medias de Ingreso.\n")
+}
+
+# -----------------------------------------------
+# Gráficos para la interpretación visual
+# -----------------------------------------------
+
+library(ggplot2)
+
+# Boxplot para visualizar la distribución de Ingreso por Estrato
+ggplot(df, aes(x = Estrato, y = Ingreso, fill = Estrato)) +
+  geom_boxplot() +
+  labs(title = "Distribución del Ingreso por Estrato Socioeconómico",
+       x = "Estrato Socioeconómico", y = "Ingreso (Millones de Pesos)") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3")
+
+# Gráfico de barras con las medias y sus intervalos de confianza
+means_df <- data.frame(
+  Estrato = levels(df$Estrato),
+  Media = tapply(df$Ingreso, df$Estrato, mean),
+  IC_Lower = tapply(df$Ingreso, df$Estrato, function(x) mean(x, na.rm = TRUE) - qt(0.975, df = length(x)-1) * sd(x, na.rm = TRUE)/sqrt(length(x))),
+  IC_Upper = tapply(df$Ingreso, df$Estrato, function(x) mean(x, na.rm = TRUE) + qt(0.975, df = length(x)-1) * sd(x, na.rm = TRUE)/sqrt(length(x)))
+)
+
+ggplot(means_df, aes(x = Estrato, y = Media, fill = Estrato)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.7) +
+  geom_errorbar(aes(ymin = IC_Lower, ymax = IC_Upper), width = 0.2) +
+  labs(title = "Medias de Ingreso por Estrato con Intervalos de Confianza",
+       x = "Estrato Socioeconómico", y = "Ingreso Promedio (Millones de Pesos)") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set3")
+
+```
+
+### c) Para la variable Colegio, realice el test de proporci´on considerando las clases Privado y Publico.
+
+```{r}
+# Cargar las librerías necesarias
+library(dplyr)
+library(ggplot2)
+
+# Filtrar los datos para "Privado" y "Publico" y eliminar los valores NA
+df_filtrado <- df %>%
+  filter(Colegio %in% c("Privado", "Publico") & !is.na(Colegio))
+
+# Contar las frecuencias de cada tipo de colegio
+conteo_colegio <- table(df_filtrado$Colegio)
+
+# Realizar el test de proporción
+x <- conteo_colegio["Privado"]
+n <- sum(conteo_colegio)
+
+# Test de proporción
+prop_test_result <- prop.test(x = x, n = n, p = 0.5, alternative = "two.sided", conf.level = 0.95)
+
+# --------------------------
+# Visualización Gráfica
+# --------------------------
+
+# 1. Gráfico de barras para visualizar la distribución de los colegios
+ggplot(data = as.data.frame(conteo_colegio), aes(x = Var1, y = Freq, fill = Var1)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Distribución de Colegios: Privado vs Publico",
+       x = "Tipo de Colegio", y = "Número de Observaciones") +
+  scale_fill_manual(values = c("Privado" = "blue", "Publico" = "orange")) +
+  theme_minimal()
+
+# 2. Gráfico de intervalos de confianza para la proporción de colegios Privado
+
+ggplot(data = data.frame(
+  x = c(0.5, prop_test_result$estimate),
+  y = c(0, 0),
+  conf_low = c(0.5, prop_test_result$conf.int[1]),
+  conf_high = c(0.5, prop_test_result$conf.int[2])),
+  aes(x = x, y = y)) +
+  geom_point(aes(color = "Estimación"), size = 4) +
+  geom_errorbarh(aes(xmin = conf_low, xmax = conf_high, color = "IC"), height = 0.1) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "red") +
+  labs(title = "Proporción Estimada de Colegios Privados y su Intervalo de Confianza",
+       x = "Proporción", y = "") +
+  scale_color_manual(values = c("Estimación" = "blue", "IC" = "black")) +
+  theme_minimal()
+
+# --------------------------
+# Resultados del Test de Proporción
+# --------------------------
+
+cat("\n🧠 **Interpretación del Test de Proporción para Colegio (Privado vs Publico):**\n")
+cat(sprintf("- Número de colegios 'Privado' en la muestra: %d\n", x))
+cat(sprintf("- Número total de colegios 'Privado' + 'Publico': %d\n", n))
+cat(sprintf("- Proporción estimada de colegios 'Privado': %.4f\n", prop_test_result$estimate))
+cat(sprintf("- p-valor del test: %.4f\n", prop_test_result$p.value))
+
+if (prop_test_result$p.value < 0.05) {
+  cat("- Dado que el p-valor (%.4f) es menor que 0.05, rechazamos la hipótesis nula (H0).\n", prop_test_result$p.value)
+  cat("- Esto significa que la proporción de colegios 'Privado' es significativamente diferente de la de colegios 'Publico'.\n")
+  cat(sprintf("- Intervalo de confianza al 95%% para la proporción de colegios 'Privado': [%.4f, %.4f].\n",
+              prop_test_result$conf.int[1], prop_test_result$conf.int[2]))
+} else {
+  cat("- Dado que el p-valor (%.4f) es mayor o igual a 0.05, no podemos rechazar la hipótesis nula (H0).\n", prop_test_result$p.value)
+  cat("- Esto significa que no hay evidencia suficiente para concluir que la proporción de colegios 'Privado'
+   es diferente de la de colegios 'Publico'.\n")
+}
+
+cat("\n**Conclusión:**\n")
+if (prop_test_result$p.value < 0.05) {
+  cat("El test de proporción sugiere que la proporción de colegios 'Privado' es significativamente diferente de la de colegios 'Publico'.\n")
+} else {
+  cat("El test de proporción no encontró evidencia suficiente para afirmar que las proporciones de colegios 'Privado' y 'Publico' sea
+   significativamente diferentes.\n") # Added closing quote
+}
+```
+
+## 2. Regresión lineal sobre el dataset Estudiantes
+
+### a) Realice un modelo regresi´on lineal donde la variable respuesta es Puntaje. Considere como conjunto de covariables a las variables m´as adecuadas según criterio AIC (selección hacia atrás).
+
+```{r}
+#  Ajuste un modelo de regresión lineal utilizando como variable respuesta el Puntaje y como covariables candidatas Edad, Estrato e Ingreso. Aplique el método de selección hacia atrás (backward selection) para determinar el subconjunto más adecuado de variables explicativas, basándose en criterios estadísticos pertinentes (por ejemplo, la significancia de los coeficientes).
+# A partir del modelo obtenido en el inciso anterior, realice un análisis diagnóstico de los residuos. Evalúe posibles violaciones a los supuestos del modelo (normalidad, homocedasticidad, independencia, etc.) e identifique la presencia de outliers y posibles puntos influyentes.
+
+# Cargar librerías necesarias
+library(dplyr)
+library(tidyr)
+library(MASS) # Para stepAIC
+library(ggplot2) # Para gráficos (aunque base R plots are used here)
+library(car)     # Para tests adicionales como VIF, outlierTest, influencePlot
+library(lmtest)  # Para bptest, dwtest
+
+# Asegurarse de que las variables necesarias sean numéricas y manejar NAs
+df_reg <- df %>%
+  dplyr::select(Puntaje, Edad, Estrato, Ingreso) %>%
+  mutate(
+    Puntaje = as.numeric(Puntaje),
+    Edad = as.numeric(Edad),
+    # Convert Estrato to factor here as well for consistency
+    Estrato = as.factor(Estrato),
+    Ingreso = as.numeric(Ingreso)
+  ) %>%
+  na.omit() # Eliminar filas con NA in these columns
+
+# a) Ajuste del modelo de regresión lineal inicial y selección hacia atrás
+cat("\n### a) Ajuste del modelo de regresión lineal y selección hacia atrás\n")
+
+# Modelo inicial con todas las covariables candidatas
+# Use the factor version of Estrato
+modelo_inicial <- lm(Puntaje ~ Edad + Estrato + Ingreso, data = df_reg)
+cat("\nModelo inicial con todas las covariables:\n")
+print(summary(modelo_inicial))
+
+# Aplicar el método de selección hacia atrás (backward selection)
+# Utilizamos stepAIC del paquete MASS, que usa AIC como criterio por defecto
+# install.packages("MASS") # Assume MASS is already loaded from previous code
+modelo_backward <- stepAIC(modelo_inicial, direction = "backward", trace = FALSE)
+
+cat("\nModelo final obtenido por selección hacia atrás:\n")
+print(summary(modelo_backward))
+
+# Describir el modelo final
+cat("\nInterpretación del Modelo Final por Selección Hacia Atrás:\n")
+# Check if the model has predictors other than the intercept
+if (length(coef(modelo_backward)) > 1) {
+    cat("- El proceso de selección hacia atrás eliminó las variables que no contribuían significativamente al modelo.\n")
+    cat("- Las variables restantes en el modelo final (", paste(names(coef(modelo_backward))[-1], collapse = ", "), ") son consideradas significativas para predecir el Puntaje, según el criterio AIC (o p-valor si se considerara en 'trace').\n")
+    cat("- Los coeficientes (Estimate) indican el cambio promedio en el Puntaje por cada unidad de aumento en la covariable correspondiente, manteniendo las otras variables constantes.\n")
+    cat("- Los p-valores (Pr(>|t|)) para cada coeficiente (excepto el intercepto) indican la significancia estadística. Valores bajos (típicamente < 0.05) sugieren que la variable es un predictor significativo.\n")
+    cat("- El R-squared múltiple indica la proporción de la varianza total en el Puntaje que es explicada por el modelo.\n")
+    cat("- El R-squared ajustado es una versión modificada que penaliza la inclusión de variables innecesarias y es útil para comparar modelos con diferente número de predictores.\n")
+    cat("- El p-valor del estadístico F evalúa la significancia global del modelo (si al menos una de las variables predictoras es significativa).\n")
+} else {
+    cat("- El proceso de selección hacia atrás eliminó todas las variables predictoras. El modelo final solo contiene el intercepto.\n")
+    cat("- Esto sugiere que ninguna de las covariables candidatas (Edad, Estrato, Ingreso) fue encontrada como un predictor significativo del Puntaje según el criterio AIC.\n")
+    cat("- El intercepto representa la media estimada del Puntaje cuando no se incluyen predictores.\n")
+    cat("- El R-squared múltiple y ajustado serán cercanos a cero o negativos, indicando que el modelo explica muy poca o ninguna varianza en el Puntaje.\n")
+}
+
+
+# b) Análisis diagnóstico de los residuos
+cat("\n### b) Análisis diagnóstico de los residuos\n")
+
+# Extraer residuos y valores ajustados del modelo final
+residuos <- residuals(modelo_backward)
+valores_ajustados <- fitted(modelo_backward)
+
+# 1. Evaluación de la Normalidad de los Residuos
+cat("\n1. Normalidad de los Residuos:\n")
+
+# Histograma de residuos
+hist(residuos, breaks = 30, main = "Histograma de Residuos", xlab = "Residuos")
+
+# Gráfico Q-Q de residuos
+qqnorm(residuos)
+qqline(residuos)
+title("Q-Q Plot de Residuos")
+
+# Test de Shapiro-Wilk (para muestras < 5000)
+if (length(residuos) < 5000) {
+  shapiro_test <- shapiro.test(residuos)
+  cat(sprintf("Test de Shapiro-Wilk para Normalidad (p-valor: %.4f):\n", shapiro_test$p.value))
+  if (shapiro_test$p.value < 0.05) {
+    cat("- El p-valor es < 0.05, lo que sugiere que los residuos NO siguen una distribución normal.\n")
+  } else {
+    cat("- El p-valor es >= 0.05, lo que sugiere que los residuos PODRÍAN seguir una distribución normal (no hay evidencia para rechazar la normalidad).\n")
+  }
+} else {
+  cat("- La muestra de residuos es demasiado grande para el test de Shapiro-Wilk. Considere tests alternativos o el análisis gráfico.\n")
+}
+
+
+# 2. Evaluación de la Homocedasticidad (varianza constante)
+cat("\n2. Homocedasticidad (Varianza Constante):\n")
+
+# Gráfico de Residuos vs. Valores Ajustados
+plot(valores_ajustados, residuos,
+     xlab = "Valores Ajustados", ylab = "Residuos",
+     main = "Residuos vs. Valores Ajustados")
+abline(h = 0, col = "red", lty = 2)
+# Add lowess line only if there are enough points and variation in fitted values
+if (length(unique(valores_ajustados)) > 1 && length(valores_ajustados) > 1) {
+  lines(lowess(valores_ajustados, residuos), col = "blue")
+} else {
+  cat("  No se puede añadir línea LOWESS: No hay suficiente variación en los valores ajustados.\n")
+}
+
+
+# Test de Breusch-Pagan para Homocedasticidad
+# install.packages("lmtest") # Assume lmtest is already loaded
+# Check if the model has predictors other than the intercept
+if (length(coef(modelo_backward)) > 1) {
+  bptest_result <- bptest(modelo_backward)
+  cat(sprintf("Test de Breusch-Pagan para Homocedasticidad (p-valor: %.4f):\n", bptest_result$p.value))
+  if (bptest_result$p.value < 0.05) {
+    cat("- El p-valor es < 0.05, lo que sugiere que la homocedasticidad NO se cumple (hay heterocedasticidad).\n")
+  } else {
+    cat("- El p-valor es >= 0.05, lo que sugiere que la homocedasticidad SÍ se cumple (no hay evidencia de heterocedasticidad).\n")
+  }
+} else {
+  cat("Test de Breusch-Pagan para Homocedasticidad: No aplicable para un modelo con solo intercepto.\n")
+}
+
+```
+
+### b) Del modelo obtenido en a), realice un an´alisis de diagnostico de los residuos y outliers.
+
+```{r}
+# 3. Evaluación de la Independencia de los Residuos
+cat("\n3. Independencia de los Residuos:\n")
+# (Asumimos que los datos son una muestra aleatoria simple y no hay dependencia temporal o espacial)
+# Si hubiera orden en los datos (ej. series de tiempo), usar Durbin-Watson test.
+# install.packages("lmtest") # Assume lmtest is already loaded
+# Check if the model has predictors other than the intercept before running dwtest
+if (length(coef(modelo_backward)) > 1) {
+    tryCatch({
+       dwtest_result <- dwtest(modelo_backward)
+       cat(sprintf("Test de Durbin-Watson (p-valor: %.4f):\n", dwtest_result$p.value))
+       if (dwtest_result$p.value < 0.05) {
+         cat("- El p-valor es < 0.05, lo que sugiere evidencia de autocorrelación.\n")
+       } else {
+         cat("- El p-valor es >= 0.05, lo que sugiere no hay evidencia de autocorrelación significativa.\n")
+       }
+    }, error = function(e) {
+       cat(paste("Error running Durbin-Watson test:", e$message, "\n"))
+       cat("  Could be due to the structure of the model or data.\n")
+    })
+} else {
+  cat("Test de Durbin-Watson: No aplicable para un modelo con solo intercepto.\n")
+}
+cat("- Asumiendo que los datos son de una muestra aleatoria y no hay dependencia temporal o espacial, se asume independencia.\n")
+cat("- Si los datos tienen un orden específico (ej. tiempo), sería necesario realizar un test de Durbin-Watson (dwtest) o similar.\n")
+
+
+# 4. Identificación de Outliers y Puntos Influyentes
+cat("\n4. Identificación de Outliers y Puntos Influyentes:\n")
+
+# Calcular distancias, hat values y residuos estudentizados
+# install.packages("car") # Assume car is already loaded
+# Check if the model has predictors other than the intercept before calculating influence measures
+if (length(coef(modelo_backward)) > 1) {
+    # Gráfico de Residuos Estudentizados vs. Hat Values
+    tryCatch({
+        plot(hatvalues(modelo_backward), rstudent(modelo_backward),
+             xlab = "Hat Values (Leverage)", ylab = "Residuos Estudentizados",
+             main = "Residuos Estudentizados vs. Hat Values")
+        abline(h = c(-2, 2), col = "red", lty = 2) # Límites para residuos estudentizados
+        abline(v = 2 * mean(hatvalues(modelo_backward)), col = "blue", lty = 2) # Criterio general para leverage
+        # identity(hatvalues(modelo_backward), rstudent(modelo_backward), labels = row.names(df_reg)) # Para identificar puntos interactivamente (o comentar si no es interactivo)
+        cat("- Gráfico de Residuos Estudentizados vs. Hat Values: Identifica outliers (residuo estudentizado alto) y puntos de alto apalancamiento (hat value alto).\n")
+    }, error = function(e) {
+        cat(paste("Error generating Residuals vs Hat Values plot:", e$message, "\n"))
+    })
+
+
+    # Gráfico de Distancia de Cook vs. Índice de la Observación
+    tryCatch({
+        plot(cooks.distance(modelo_backward),
+             xlab = "Índice de la Observación", ylab = "Distancia de Cook",
+             main = "Distancia de Cook por Observación")
+        # Línea de umbral común (ej. 4/(n-p-1) o 1)
+        abline(h = 4/(nrow(df_reg) - length(coef(modelo_backward)) - 1), col = "red", lty = 2)
+        # identity(cooks.distance(modelo_backward), labels = row.names(df_reg)) # Identificar puntos interactivamente (o comentar)
+        cat("- Gráfico de Distancia de Cook: Identifica puntos influyentes. Observaciones con Distancia de Cook alta tienen gran impacto en las estimaciones de los coeficientes.\n")
+    }, error = function(e) {
+        cat(paste("Error generating Cook's Distance plot:", e$message, "\n"))
+    })
+
+    # Identificar observaciones potenciales de outlier/influyentes basado en criterios
+    outliers_res <- which(abs(rstudent(modelo_backward)) > 2) # Residuos estudentizados > 2 o < -2
+    # Ensure enough degrees of freedom for Cook's distance calculation threshold
+    if ((nrow(df_reg) - length(coef(modelo_backward)) - 1) > 0) {
+      influential_cook_indices <- which(cooks.distance(modelo_backward) > 4/(nrow(df_reg) - length(coef(modelo_backward)) - 1)) # Distancia de Cook > 4/(n-p-1)
+    } else {
+      influential_cook_indices <- integer(0) # No influential points if not enough data
+    }
+    influential_hat_indices <- which(hatvalues(modelo_backward) > 2 * mean(hatvalues(modelo_backward))) # Hat values > 2 * media(hat values)
+
+    cat("\nObservaciones potenciales (basado en umbrales comunes):\n")
+    cat("Outliers (Residuos Estudentizados > |2|):", ifelse(length(outliers_res) > 0, paste(outliers_res, collapse = ", "), "Ninguno"), "\n")
+    cat("Puntos Influyentes (Distancia de Cook > 4/(n-p-1)):", ifelse(length(influential_cook_indices) > 0, paste(influential_cook_indices, collapse = ", "), "Ninguno"), "\n")
+    cat("Puntos de Alto Leverage (Hat values > 2*mean(hat values)):", ifelse(length(influential_hat_indices) > 0, paste(influential_hat_indices, collapse = ", "), "Ninguno"), "\n")
+
+} else {
+  cat("\nIdentificación de Outliers y Puntos Influyentes: No aplicable para un modelo con solo intercepto.\n")
+}
+
+
+# Gráfico de todos los diagnósticos en una matriz (base R)
+cat("\nGráficos de Diagnóstico del Modelo (Base R):\n")
+par(mfrow = c(2, 2)) # Configure layout for 4 plots
+plot(modelo_backward) # Generate standard diagnostic plots
+par(mfrow = c(1, 1)) # Restore default layout
+
+# Interpretar estos gráficos:
+cat("\nInterpretación de los Gráficos de Diagnóstico (Base R):\n")
+cat("- **Residuals vs Fitted:** Evalúa linealidad y homocedasticidad. Se busca dispersión aleatoria alrededor de 0.\n")
+cat("- **Normal Q-Q:** Evalúa normalidad de residuos. Los puntos deben seguir la línea recta.\n")
+cat("- **Scale-Location:** Evalúa homocedasticidad. Se busca una dispersión constante de los puntos.\n")
+cat("- **Residuals vs Leverage:** Identifica puntos influyentes (alto leverage y/o alto residuo). Busque puntos en la esquina superior derecha o inferior derecha.\n")
+# The Cook's distance vs Leverage plot is often the 5th plot, which might not be generated for simple models.
+# Check if the 5th plot is available before commenting on it.
+# if (length(plot(modelo_backward)) >= 5) { # This check is not reliable
+#  cat("- Cook's distance vs Leverage: Identifica puntos influyentes. Busque burbujas grandes.\n")
+# } else {
+cat("  Note: Depending on the model, not all 5 standard diagnostic plots may be generated.\n")
+# }
+
+
+cat("\nInterpretación del Análisis Diagnóstico:\n")
+cat("- Los gráficos de residuos y los tests estadísticos ayudan a evaluar si los supuestos del modelo lineal se cumplen (normalidad, homocedasticidad, independencia).\n")
+cat("- Las violaciones a los supuestos pueden invalidar las inferencias estadísticas (significancia de coeficientes, intervalos de confianza).\n")
+cat("- La presencia de outliers (residuos grandes) y puntos influyentes (alto leverage y/o alta Distancia de Cook) puede distorsionar los resultados de la regresión. Es importante investigar estas observaciones.\n")
+cat("- Si se detectan violaciones severas a los supuestos o puntos influyentes problemáticos, se podrían considerar transformaciones de variables, modelos alternativos o la exclusión (justificada) de observaciones.\n")
+```
+
+## 3. Considere el set de datos Swordfish.txt, correspondiente a la especie pez espada del oce´ano Pac´ıfico Sur. Las variables son EDAD (en a˜nos), LONGITUD (en cm), PT (peso total en kg), y SEXO (g´enero, 1: macho, 2: hembra) de cada individuo/observaci´on.
+
+## Carga del dataset Swordfish
+
+```{r}
+# Cargar librerías necesarias
+library(dplyr)
+library(ggplot2)
+library(car) # Para pruebas de diagnóstico como outlierTest, influencePlot
+library(lmtest) # Para bptest, dwtest
+library(MASS) # Para boxcox
+
+# Cargar y preprocesar el set de datos Swordfish.txt
+# (Asegurándose de que el dataframe 'cl' esté disponible con las variables LONGITUD, PT, SEXO)
+# Si 'cl' no está cargado, cargarlo aquí:
+if (!exists("cl")) {
+  # Definir la URL directa (raw) del archivo Excel en GitHub
+  excel_url <-"https://github.com/witman92/r-inferential-analytics/raw/main/pez%20espada%20pasifico.xlsx"
+
+  # Crear un archivo temporal
+  temp_file <- tempfile(fileext = ".xlsx")
+
+  # Descargar el archivo
+  download.file(url = excel_url, destfile = temp_file, mode = "wb")
+
+  # Leer el archivo
+  cl <- read_excel(temp_file)
+
+  # Eliminar el archivo temporal
+  unlink(temp_file)
+}
+#sumarry
+
+summary(cl)
+```
+
+### a) Los biologos marinos proponen modelar la relacion edad/longitud mediante la funcion de von Bertalan y: L(t) = L (1 e k(t t0)) donde L(t) es talla en el tiempo t de la especie y t es la edad de la especie. Los parametros son L(talla maxima permisible en la especie), k es el parametro de curvatura (1 t), y t0 es el parametro 1 de condicion inicial. Es posible obtener un modelo de regresion lineal a partir de la funcion de von Bertalan y? Entre los argumentos matematicos.
+
+```{r}
+cat("\n### 3. Análisis del set de datos Swordfish\n")
+cat("\n### a) Modelado con la función de crecimiento de von Bertalanffy\n")
+
+# Filtrar datos válidos
+cl_bertalanffy <- cl %>%
+  dplyr::select(EDAD, LONGITUD) %>%
+  filter(!is.na(EDAD), !is.na(LONGITUD), EDAD >= 0, LONGITUD > 0) %>%
+  mutate(across(c(EDAD, LONGITUD), as.numeric))
+
+# Visualización inicial
+ggplot() +
+  # Puntos observados
+  geom_point(data = cl_bertalanffy, aes(x = EDAD, y = LONGITUD),
+             alpha = 0.6, color = "#1f77b4", size = 2, shape = 16) +
+  
+  # Curva ajustada
+  geom_line(data = curva_ajustada, aes(x = EDAD, y = LONGITUD_pred),
+            color = "#d62728", size = 1.2, linetype = "solid") +
+  
+  # Títulos y etiquetas
+  labs(title = "Ajuste del modelo de crecimiento von Bertalanffy",
+       subtitle = "Pez Espada: Longitud vs Edad",
+       x = "Edad (años)",
+       y = "Longitud (cm)",
+       caption = "Fuente: Datos de Swordfish | Línea roja: modelo ajustado") +
+  
+  # Tema visual mejorado
+  theme_minimal(base_size = 13) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(color = "gray30"),
+    legend.position = "none",
+    panel.grid.minor = element_blank()
+  )
+
+
+# ---- Fundamento Teórico ----
+cat("\n### Fundamento matemático del modelo de von Bertalanffy\n")
+cat("Modelo: Lt = L_inf * (1 - exp(-K * (t - t0)))\n")
+cat("Es una función NO LINEAL en sus parámetros (L_inf, K, t0), por lo que no puede representarse como un modelo de regresión lineal clásico.\n")
+
+# Intento de linealización (logarítmica)
+cat("\nIntentos de linealización, como log(1 - Lt/L_inf) = -K*t, requieren conocer L_inf previamente y sólo son válidos si Lt < L_inf.\n")
+
+# Alternativa: Walford Plot
+cat("El método Walford (Lt+1 = a + b*Lt) requiere datos longitudinales, lo cual no aplica a este conjunto transversal.\n")
+
+# ---- Ajuste No Lineal con nls (comentado por defecto) ----
+# Estimación de valores iniciales
+tryCatch({
+  Linf_guess <- max(cl_bertalanffy$LONGITUD, na.rm = TRUE) * 1.1
+  cl_bertalanffy$log_diff <- log(Linf_guess - cl_bertalanffy$LONGITUD)
+  K_guess <- -coef(lm(log_diff ~ EDAD, data = cl_bertalanffy))[2]
+  if (is.na(K_guess) || K_guess <= 0 || K_guess > 1) K_guess <- 0.2
+  t0_guess <- -1
+
+  cat("\nParámetros iniciales estimados:\n")
+  cat(sprintf("L_inf ≈ %.2f, K ≈ %.4f, t0 ≈ %.2f\n", Linf_guess, K_guess, t0_guess))
+
+  # Ajuste no lineal
+  modelo_bertalanffy <- tryCatch({
+    nls(LONGITUD ~ Linf * (1 - exp(-K * (EDAD - t0))),
+        data = cl_bertalanffy,
+        start = list(Linf = Linf_guess, K = K_guess, t0 = t0_guess),
+        control = nls.control(maxiter = 200, warnOnly = TRUE))
+  }, error = function(e) {
+    cat("Error al ajustar el modelo nls:", e$message, "\n")
+    NULL
+  })
+
+  # Mostrar resultados y graficar
+  if (!is.null(modelo_bertalanffy)) {
+    cat("\nModelo ajustado:\n")
+    print(summary(modelo_bertalanffy))
+
+    edad_pred <- seq(min(cl_bertalanffy$EDAD), max(cl_bertalanffy$EDAD), length.out = 100)
+    curva_ajustada <- data.frame(
+      EDAD = edad_pred,
+      LONGITUD_pred = predict(modelo_bertalanffy, newdata = data.frame(EDAD = edad_pred))
+    )
+
+
+    cat("\nLa curva roja representa el ajuste del modelo de von Bertalanffy.\n")
+  } else {
+    cat("No se logró ajustar el modelo.\n")
+  }
+}, error = function(e) {
+  cat("Error en la estimación:", e$message, "\n")
+})
+
+# ---- Conclusión ----
+cat("\n### Conclusión sobre la linealidad:\n")
+cat("La función de von Bertalanffy es NO LINEAL en sus parámetros.\n")
+cat("Aunque pueden aplicarse transformaciones para intentar linealizarla, estas requieren suposiciones poco realistas o estructuras de datos específicas (ej. series temporales).\n")
+cat("Por tanto, NO es posible obtener un modelo de regresión lineal directo para estimar los parámetros de crecimiento.\n")
+cat("El ajuste debe realizarse con métodos de regresión NO LINEAL como `nls`.\n")
+
+```
+
+### b) Los biologos marinos proponen modelar la relacion longitud/peso mediante la funcion: yi = w(xi) = axbi i donde w(xi) es el peso del individuo i con longitud xi, i iid N(0 2), y los parametros son: a es el peso teorico en x = 0 y b es la taza de crecimiento del peso. Linealice la ecuacion anterior para realizar un ajuste de regresion lineal por cada genero, provea los resultados junto a un analisis de diagnostico de los residuos y outliers.
+
+```{=html}
+{r}
+# # modelar la relación longitud/PT "peso kg" mediante la función: (y_{i}=w(x_{i})=ax_{i}^{b}\epsilon _{i}\).  Linealice la ecuación anterior para realizar un ajuste de regresión lineal por cada genero (genero 1:
+# # macho, 2: hembra) hembra , provea los resultados junto a un análisis de diagnostico de los residuos y outliers con gráficos e interpretación concisa
+# # ### 3. Continuación del set de datos Swordfish.txt
+# # ## b) Modelar la relación longitud/PT "peso kg" mediante la función: \(y_{i}=w(x_{i})=ax_{i}^{b}\epsilon _{i}\).
+# #  Linealice la ecuación anterior para realizar un ajuste de regresión lineal por cada genero (genero 1:
+# # macho, 2: hembra) hembra , provea los resultados junto a un análisis de diagnostico de los residuos y outliers con gráficos e interpretación
+
+# Cargar librerías necesarias
+library(dplyr)
+library(ggplot2)
+library(car) # Para pruebas de diagnóstico como outlierTest, influencePlot
+library(lmtest) # Para bptest, dwtest
+library(MASS) # Para boxcox
+
+# Cargar y preprocesar el set de datos Swordfish.txt
+# (Asegurándose de que el dataframe 'cl' esté disponible con las variables LONGITUD, PT, SEXO)
+# Si 'cl' no está cargado, cargarlo aquí:
+if (!exists("cl")) {
+  # Definir la URL directa (raw) del archivo Excel en GitHub
+  excel_url <-"https://github.com/witman92/r-inferential-analytics/raw/main/pez%20espada%20pasifico.xlsx"
+
+  # Crear un archivo temporal
+  temp_file <- tempfile(fileext = ".xlsx")
+
+  # Descargar el archivo
+  download.file(url = excel_url, destfile = temp_file, mode = "wb")
+
+  # Leer el archivo
+  cl <- read_excel(temp_file)
+
+  # Eliminar el archivo temporal
+  unlink(temp_file)
+}
+
+# Preprocesar los datos: seleccionar variables, convertir a numérico, manejar NAs
+df_lp <- cl %>%
+  dplyr::select(LONGITUD, PT, SEXO) %>%
+  dplyr::mutate(
+    LONGITUD = as.numeric(LONGITUD),
+    PT = as.numeric(PT),
+    SEXO = as.factor(SEXO) # Asegurarse de que SEXO sea un factor
+  ) %>%
+  dplyr::filter(!is.na(LONGITUD), !is.na(PT), !is.na(SEXO), LONGITUD > 0, PT > 0) # Asegurar valores positivos para log
+
+cat("\n### b) Modelado de la relación Longitud/Peso (PT) y Análisis Diagnóstico\n")
+cat("Modelo propuesto: PT = a * LONGITUD^b * epsilon\n")
+
+# Linealización del modelo: log(PT) = log(a) + b * log(LONGITUD) + log(epsilon)
+# Esto se convierte en un modelo lineal de la forma: Y = beta0 + beta1 * X + error
+# Donde Y = log(PT), beta0 = log(a), beta1 = b, X = log(LONGITUD), error = log(epsilon)
+
+df_lp <- df_lp %>%
+  dplyr::mutate(
+    log_LONGITUD = log(LONGITUD),
+    log_PT = log(PT)
+  )
+
+# Verificar la estructura de los datos después de la transformación
+cat("\nEstructura de los datos después de la transformación logarítmica:\n")
+print(head(df_lp))
+cat(sprintf("Dimensiones del dataset transformado: %d filas, %d columnas\n", nrow(df_lp), ncol(df_lp)))
+cat("Resumen de las variables transformadas:\n")
+print(summary(df_lp))
+
+
+# Realizar ajuste de regresión lineal por cada género
+generos <- levels(df_lp$SEXO)
+modelos_linealizados <- list()
+resultados_coeficientes <- data.frame() # Para almacenar coeficientes y p-valores
+
+cat("\n--- Ajuste de Regresión Lineal por Género ---\n")
+
+for (genero in generos) {
+  cat(sprintf("\nAjustando modelo para Género %s:\n", genero))
+
+  # Filtrar datos por género
+  df_genero <- df_lp %>% filter(SEXO == genero)
+
+  # Verificar si hay suficientes datos para el ajuste
+  if (nrow(df_genero) < 2) {
+    cat(sprintf("  No hay suficientes datos para Género %s para ajustar el modelo.\n", genero))
+    next
+  }
+
+  # Ajustar el modelo linealizado: log(PT) ~ log(LONGITUD)
+  modelo_lm <- lm(log_PT ~ log_LONGITUD, data = df_genero)
+
+  # Almacenar el modelo
+  modelos_linealizados[[as.character(genero)]] <- modelo_lm
+
+  # Mostrar resumen del modelo
+  print(summary(modelo_lm))
+
+  # Extraer coeficientes y p-valores
+  coef_summary <- summary(modelo_lm)$coefficients
+  rownames(coef_summary) <- paste0(rownames(coef_summary), "_", genero)
+  resultados_coeficientes <- bind_rows(resultados_coeficientes, as.data.frame(coef_summary))
+
+  # Interpretar coeficientes
+  log_a <- coef(modelo_lm)["(Intercept)"]
+  b <- coef(modelo_lm)["log_LONGITUD"]
+  a <- exp(log_a)
+
+  cat(sprintf("\nParámetros estimados para Género %s:\n", genero))
+  cat(sprintf("  log(a) = %.4f (Estimado)\n", log_a))
+  cat(sprintf("  a = exp(log(a)) = %.4f (Estimado)\n", a))
+  cat(sprintf("  b = %.4f (Estimado)\n", b))
+  cat(sprintf("  Ecuación Linealizada: log(PT) ≈ %.4f + %.4f * log(LONGITUD)\n", log_a, b))
+  cat(sprintf("  Ecuación Original Estimada: PT ≈ %.4f * LONGITUD^%.4f\n", a, b))
+
+  cat("\nAnálisis de Diagnóstico de Residuos para Género", genero, ":\n")
+
+  # Extraer residuos y valores ajustados
+  residuos_gen <- residuals(modelo_lm)
+  valores_ajustados_gen <- fitted(modelo_lm)
+  n_gen <- nrow(df_genero)
+  p_gen <- length(coef(modelo_lm)) # Número de coeficientes (incluye intercepto)
+
+  # 1. Normalidad de los Residuos
+  cat("\n  1. Normalidad de los Residuos:\n")
+  if (n_gen < 5000) {
+    shapiro_test_gen <- shapiro.test(residuos_gen)
+    cat(sprintf("    Test de Shapiro-Wilk (p-valor: %.4f): ", shapiro_test_gen$p.value))
+    if (shapiro_test_gen$p.value < 0.05) {
+      cat("No se cumple la normalidad (p < 0.05).\n")
+    } else {
+      cat("La normalidad podría cumplirse (p >= 0.05).\n")
+    }
+  } else {
+    cat("    Muestra demasiado grande para Shapiro-Wilk.\n")
+  }
+  qqnorm(residuos_gen, main = paste("Q-Q Plot Residuos - Género", genero))
+  qqline(residuos_gen)
+  hist(residuos_gen, breaks = 20, main = paste("Histograma Residuos - Género", genero), xlab = "Residuos")
+
+
+  # 2. Homocedasticidad (Varianza Constante)
+  cat("\n  2. Homocedasticidad:\n")
+  # Check if there are enough unique fitted values for the test
+  if (length(unique(valores_ajustados_gen)) > 1) {
+    bptest_result_gen <- bptest(modelo_lm)
+    cat(sprintf("    Test de Breusch-Pagan (p-valor: %.4f): ", bptest_result_gen$p.value))
+    if (bptest_result_gen$p.value < 0.05) {
+      cat("Hay evidencia de heterocedasticidad (p < 0.05).\n")
+    } else {
+      cat("No hay evidencia de heterocedasticidad (p >= 0.05).\n")
+    }
+  } else {
+      cat("    No hay suficientes valores ajustados únicos para el Test de Breusch-Pagan.\n")
+  }
+
+  plot(valores_ajustados_gen, residuos_gen,
+       xlab = "Valores Ajustados (log(PT))", ylab = "Residuos",
+       main = paste("Residuos vs. Valores Ajustados - Género", genero))
+  abline(h = 0, col = "red", lty = 2)
+  if (length(unique(valores_ajustados_gen)) > 1 && length(valores_ajustados_gen) > 1) {
+      lines(lowess(valores_ajustados_gen, residuos_gen), col = "blue")
+  }
+
+
+  # 3. Independencia de los Residuos
+  cat("\n  3. Independencia de los Residuos:\n")
+  if (n_gen > p_gen) { # Durbin-Watson requires n > p
+    tryCatch({
+        dwtest_result_gen <- dwtest(modelo_lm)
+        cat(sprintf("    Test de Durbin-Watson (p-valor: %.4f): ", dwtest_result_gen$p.value))
+        if (dwtest_result_gen$p.value < 0.05) {
+          cat("Hay evidencia de autocorrelación.\n")
+        } else {
+          cat("No hay evidencia de autocorrelación significativa.\n")
+        }
+    }, error = function(e) {
+        cat(paste("    Error running Durbin-Watson test:", e$message, "\n"))
+    })
+  } else {
+      cat("    No hay suficientes grados de libertad para el Test de Durbin-Watson.\n")
+  }
+  cat("    (Se asume independencia si los datos son una muestra aleatoria y no secuencial).\n")
+
+  # 4. Identificación de Outliers y Puntos Influyentes
+  cat("\n  4. Outliers y Puntos Influyentes:\n")
+
+  if (n_gen > p_gen) { # Need enough data points
+      # Residuos estudentizados vs Hat Values
+      tryCatch({
+          plot(hatvalues(modelo_lm), rstudent(modelo_lm),
+               xlab = "Hat Values (Leverage)", ylab = "Residuos Estudentizados",
+               main = paste("Residuos Estudentizados vs. Hat Values - Género", genero))
+          abline(h = c(-2, 2), col = "red", lty = 2)
+          abline(v = 2 * mean(hatvalues(modelo_lm)), col = "blue", lty = 2)
+          # text(hatvalues(modelo_lm), rstudent(modelo_lm), labels=row.names(df_genero), cex=0.7, pos=3) # Uncomment to label points
+      }, error = function(e) {
+          cat(paste("    Error generating Residuals vs Hat Values plot:", e$message, "\n"))
+      })
+
+      # Distancia de Cook
+      tryCatch({
+          cooks_dist_gen <- cooks.distance(modelo_lm)
+          plot(cooks_dist_gen,
+               xlab = "Índice de la Observación", ylab = "Distancia de Cook",
+               main = paste("Distancia de Cook - Género", genero))
+          # Add threshold line if applicable
+          if ((n_gen - p_gen - 1) > 0) {
+            abline(h = 4/(n_gen - p_gen - 1), col = "red", lty = 2) # Common threshold
+          }
+          # text(1:n_gen, cooks_dist_gen, labels=row.names(df_genero), cex=0.7, pos=3) # Uncomment to label points
+          potential_influential <- which(cooks_dist_gen > 4/(n_gen - p_gen - 1))
+          cat(sprintf("    Puntos con Distancia de Cook > umbral (%.4f): %s\n",
+                      4/(n_gen - p_gen - 1),
+                      ifelse(length(potential_influential) > 0, paste(potential_influential, collapse = ", "), "Ninguno")))
+      }, error = function(e) {
+          cat(paste("    Error generating Cook's Distance plot:", e$message, "\n"))
+      })
+
+      # car::outlierTest(modelo_lm) # Uncomment for formal outlier test
+      # car::influencePlot(modelo_lm, main = paste("Influence Plot - Género", genero)) # Uncomment for influence plot
+
+  } else {
+      cat("    No hay suficientes grados de libertad para calcular métricas de influencia.\n")
+  }
+
+  # Gráficos de diagnóstico estándar de R
+  cat("\n  Gráficos de Diagnóstico Estándar de R:\n")
+  par(mfrow = c(2, 2))
+  plot(modelo_lm)
+  par(mfrow = c(1, 1)) # Restore layout
+
+
+  cat("\nInterpretación del Diagnóstico para Género", genero, ":\n")
+  cat("- Los gráficos y tests evalúan si los supuestos del modelo linealizado (normalidad, homocedasticidad, independencia de residuos) se cumplen para este género.\n")
+  cat("- La presencia de outliers (puntos con residuos grandes) o puntos influyentes (que cambian significativamente el modelo al ser removidos) debe ser investigada.\n")
+  cat("- Si los supuestos no se cumplen, los resultados del modelo (coeficientes, p-valores) pueden no ser fiables.\n")
+  cat("- Heterocedasticidad (si está presente) puede abordarse con errores estándar robustos o WLS.\n")
+  cat("- No normalidad severa puede sugerir que la transformación logarítmica no fue suficiente, o que el modelo no lineal original podría ser más adecuado (aunque más complejo de ajustar).\n")
+  cat("- La independencia generalmente se asume si los datos no tienen orden secuencial.\n")
+}
+
+cat("\n--- Resumen de Coeficientes Estimados por Género ---\n")
+print(resultados_coeficientes)
+
+cat("\nAnálisis Comparativo de los Resultados por Género:\n")
+cat("- Comparar los coeficientes 'b' (Pendiente de log(PT) vs log(LONGITUD)) entre géneros. ¿Son significativamente diferentes?\n")
+cat("- Comparar los coeficientes 'log(a)' (Intercepto). Esto se relaciona con el factor 'a' en la ecuación original.\n")
+cat("- Los resultados del análisis diagnóstico de residuos indican la validez del modelo linealizado para cada género por separado.\n")
+cat("- Si el modelo linealizado es válido para ambos, la relación logarítmica entre peso y longitud es similar (pendiente 'b' no muy diferente), pero el factor 'a' (relacionado con la densidad o forma general) podría variar.\n")
+
+
+# Opcional: Gráfico de los datos transformados por género con las líneas de regresión
+ggplot(df_lp, aes(x = log_LONGITUD, y = log_PT, color = SEXO)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = TRUE) + # Añade la línea de regresión lineal y su IC
+  labs(title = "Relación Linealizada: log(PT) vs log(LONGITUD) por Género",
+       x = "log(Longitud en cm)", y = "log(Peso Total en kg)") +
+  theme_minimal()
+
+# Opcional: Visualización del modelo original (no lineal) con las curvas ajustadas
+# Para esto, necesitamos predecir en la escala original y graficar.
+# Crear puntos de predicción a lo largo del rango de Longitud
+longitud_pred <- seq(min(df_lp$LONGITUD), max(df_lp$LONGITUD), length.out = 100)
+predicciones_df <- data.frame()
+
+for (genero in generos) {
+    if (!is.null(modelos_linealizados[[as.character(genero)]])) {
+        modelo_lm_gen <- modelos_linealizados[[as.character(genero)]]
+        log_a_gen <- coef(modelo_lm_gen)["(Intercept)"]
+        b_gen <- coef(modelo_lm_gen)["log_LONGITUD"]
+        a_gen <- exp(log_a_gen)
+
+        # Calcular PT predicho en la escala original
+        pt_pred_gen <- a_gen * (longitud_pred ^ b_gen)
+
+        predicciones_df <- bind_rows(predicciones_df,
+                                     data.frame(LONGITUD = longitud_pred,
+                                                PT_pred = pt_pred_gen,
+                                                SEXO = genero))
+    }
+}
+
+ggplot(df_lp, aes(x = LONGITUD, y = PT, color = SEXO)) +
+  geom_point(alpha = 0.6) +
+  geom_line(data = predicciones_df, aes(x = LONGITUD, y = PT_pred, color = SEXO), size = 1) +
+  labs(title = "Ajuste del Modelo Potencial Original: PT vs LONGITUD por Género",
+       x = "Longitud (cm)", y = "Peso Total (kg)") +
+  theme_minimal() +
+  # Escalas logarítmicas en los ejes si se desea visualizar la forma linealizada
+  # scale_x_continuous(trans = "log") +
+  # scale_y_continuous(trans = "log") +
+  NULL
+```
